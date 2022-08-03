@@ -1,6 +1,6 @@
 *~
-input/*
-output/*
+input/
+output/
 submissions/*
 .py.*
 *csv
