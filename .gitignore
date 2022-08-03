@@ -1,7 +1,7 @@
 *~
-Input/
-Output/
-Submission/
+input/*
+output/*
+submissions/*
 .py.*
 *csv
 *pkl
