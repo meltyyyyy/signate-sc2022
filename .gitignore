@@ -12,3 +12,4 @@ catboost_info/
 *png
 *txt
 *.log
+*.pdf
