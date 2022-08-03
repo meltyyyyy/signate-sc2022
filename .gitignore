@@ -13,3 +13,4 @@ catboost_info/
 *txt
 *.log
 *.pdf
+.vscode/
