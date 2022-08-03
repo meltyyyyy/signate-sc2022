@@ -1,7 +1,4 @@
 *~
-input/
-output/
-submissions/*
 .py.*
 *csv
 *pkl
