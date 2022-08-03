@@ -16,16 +16,9 @@
     "python.venvPath": "/Users/takeru.abe/opt/anaconda3/envs/sc",
     "python.condaPath": "/Users/takeru.abe/opt/anaconda3/condabin/conda",
     "python.linting.pylintEnabled": false,
-    "python.linting.mypyEnabled": true,
     "python.linting.pycodestyleEnabled": true,
     "python.linting.pycodestyleArgs": [
         "--max-line-length=150",
-        "--ignore=E402"
-    ],
-    "python.linting.flake8Enabled": true,
-    "python.linting.flake8Args": [
-        "--max-line-length=150",
-        "--max-complexity","20",
         "--ignore=E402"
     ],
     "python.formatting.provider": "autopep8",
