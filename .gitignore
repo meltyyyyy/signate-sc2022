@@ -2,6 +2,8 @@
 .py.*
 *csv
 *pkl
+*npy
+*pth
 *feather
 *parquet
 __pycache__/
