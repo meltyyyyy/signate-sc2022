@@ -3,7 +3,7 @@
 
 # ### Basic configuration
 
-# In[5]:
+# In[1]:
 
 
 class Config:
@@ -35,7 +35,7 @@ class Config:
 
 # ### Import basic libraries
 
-# In[6]:
+# In[2]:
 
 
 from tqdm.auto import tqdm
@@ -68,57 +68,67 @@ warnings.filterwarnings('ignore')
 
 # ### Seeding
 
-# In[7]:
+# In[ ]:
 
 
-random.seed(Config.seed)
-np.random.seed(Config.seed)
-os.environ['PYTHONHASHSEED'] = str(Config.seed)
+def seed_everything():
+    random.seed(Config.seed)
+    np.random.seed(Config.seed)
+    os.environ['PYTHONHASHSEED'] = str(Config.seed)
+
+seed_everything()
 
 
 # ### Path configuration
 
-# In[8]:
+# In[ ]:
 
 
-INPUT = os.path.join(Config.dir_path, 'input')
-OUTPUT = os.path.join(Config.dir_path, 'output')
-SUBMISSION = os.path.join(Config.dir_path, 'submissions')
-OUTPUT_EXP = os.path.join(OUTPUT, Config.script)
-EXP_MODEL = os.path.join(OUTPUT_EXP, "model")
-EXP_FIG = os.path.join(OUTPUT_EXP, "fig")
-NOTEBOOK = os.path.join(Config.dir_path, "Notebooks")
-SCRIPT = os.path.join(Config.dir_path, "scripts")
+def path_setup():
+    INPUT = os.path.join(Config.dir_path, 'input')
+    OUTPUT = os.path.join(Config.dir_path, 'output')
+    SUBMISSION = os.path.join(Config.dir_path, 'submissions')
+    OUTPUT_EXP = os.path.join(OUTPUT, Config.script)
+    EXP_MODEL = os.path.join(OUTPUT_EXP, "model")
+    EXP_FIG = os.path.join(OUTPUT_EXP, "fig")
+    NOTEBOOK = os.path.join(Config.dir_path, "Notebooks")
+    SCRIPT = os.path.join(Config.dir_path, "scripts")
 
-# make dirs
-for dir in [
-        INPUT,
-        OUTPUT,
-        SUBMISSION,
-        OUTPUT_EXP,
-        EXP_MODEL,
-        EXP_FIG,
-        NOTEBOOK,
-        SCRIPT]:
-    os.makedirs(dir, exist_ok=True)
+    # make dir
+    for dir in [
+            INPUT,
+            OUTPUT,
+            SUBMISSION,
+            OUTPUT_EXP,
+            EXP_MODEL,
+            EXP_FIG,
+            NOTEBOOK,
+            SCRIPT]:
+        os.makedirs(dir, exist_ok=True)
 
-if Config.is_notebook():
-    notebook_path = os.path.join(NOTEBOOK, Config.notebook + ".ipynb")
-    script_path = os.path.join(SCRIPT, Config.script + ".py")
-    dir, _ = ntpath.split(script_path)
-    subprocess.run(f"mkdir -p {dir}; touch {script_path}",
-                   shell=True,
-                   stdout=PIPE,
-                   stderr=PIPE,
-                   text=True)
-    subprocess.run(
-        f"jupyter nbconvert --to python {notebook_path} --output {script_path}",
-        shell=True,
-        stdout=PIPE,
-        stderr=PIPE,
-        text=True)
+    if Config.is_notebook():
+        notebook_path = os.path.join(NOTEBOOK, Config.notebook + ".ipynb")
+        script_path = os.path.join(SCRIPT, Config.script + ".py")
+        dir, _ = ntpath.split(script_path)
+        subprocess.run(f"mkdir -p {dir}; touch {script_path}",
+                       shell=True,
+                       stdout=PIPE,
+                       stderr=PIPE,
+                       text=True)
+        subprocess.run(
+            f"jupyter nbconvert --to python {notebook_path} --output {script_path}",
+            shell=True,
+            stdout=PIPE,
+            stderr=PIPE,
+            text=True)
+
+path_setup()
 
 
 # # Load data
 
-# 
+# In[ ]:
+
+
+print('aaaaa')
+
