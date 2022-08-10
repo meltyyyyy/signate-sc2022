@@ -1,18 +1,18 @@
 #!/usr/bin/env python
 # coding: utf-8
 """summery
-fold0 : 0.5572658102598222
-fold1 : 0.5541388869891285
-fold2 : 0.5943871785119128
-fold3 : 0.5680619869791236
-fold4 : 0.5652159570724842
-oof score: 0.5678139639624943
+fold0 : 0.589268085403194
+fold1 : 0.6135278914833789
+fold2 : 0.5991713130826277
+fold3 : 0.6137200966187506
+fold4 : 0.601547619047619
+oof score: 0.603447001127114
 """
 
 from sklearn.metrics import f1_score
 from sklearn.model_selection import StratifiedKFold
 from sklearn.naive_bayes import MultinomialNB
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer
 import texthero as hero
 import matplotlib.pyplot as plt
 import numpy as np
@@ -73,7 +73,7 @@ def path_setup(cfg):
 
 def vectorize(train: pd.DataFrame, test: pd.DataFrame):
 
-    vectorizer = TfidfVectorizer()
+    vectorizer = CountVectorizer()
 
     train = vectorizer.fit_transform(train['description'].pipe(hero.clean)).toarray()
     test = vectorizer.fit_transform(test['description'].pipe(hero.clean)).toarray()
