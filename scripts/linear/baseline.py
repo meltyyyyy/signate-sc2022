@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# ### Basic configuration
-
 
 from sklearn.metrics import f1_score
 from sklearn.model_selection import StratifiedKFold
@@ -14,15 +12,11 @@ import texthero as hero
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import ntpath
-from subprocess import PIPE
-import subprocess
 from glob import glob
 import random
 import warnings
 import gc
 import os
-import seaborn as sns
 from tqdm.auto import tqdm
 
 
@@ -37,16 +31,9 @@ class Config:
     dir_path = "/home/abe/kaggle/signate-sc2022"
 
 
-# ### Import basic libraries
-
-
 plt.style.use('seaborn-pastel')
-sns.set_palette("winter_r")
 warnings.filterwarnings('ignore')
 tqdm.pandas()
-
-
-# ### Seeding
 
 
 def seed_everything(seed):
@@ -56,9 +43,6 @@ def seed_everything(seed):
 
 
 seed_everything(Config.seed)
-
-
-# ### Path configuration
 
 
 def path_setup(cfg):
@@ -78,9 +62,6 @@ def path_setup(cfg):
 cfg = path_setup(Config)
 
 
-# # Load data
-
-
 # load data
 train = pd.read_csv(os.path.join(cfg.INPUT, 'train.csv'))
 test = pd.read_csv(os.path.join(cfg.INPUT, 'test.csv'))
@@ -91,32 +72,6 @@ train['jobflag'] -= 1
 
 
 train.head(5)
-
-
-# ## TFIDF-Vectorizer
-
-
-def vectorize(train: pd.DataFrame, test: pd.DataFrame):
-
-    train['tfidf'] = train['description'].pipe(hero.clean).pipe(hero.tfidf)
-    test['tfidf'] = test['description'].pipe(hero.clean).pipe(hero.tfidf)
-    return train, test
-
-
-train, test = vectorize(train, test)
-
-
-assert "tfidf" in train.columns, "tfidf does not exist in train."
-assert "tfidf" in test.columns, "tfidf does not exist in test."
-# TODO : try GPLVM
-train['pca'] = train['tfidf'].pipe(hero.pca)
-test['pca'] = test['tfidf'].pipe(hero.pca)
-
-hero.scatterplot(train, 'pca', color='jobflag', title="PCA Description")
-
-
-train['labels'] = train['tfidf'].pipe(hero.kmeans, n_clusters=4).astype(str)
-hero.scatterplot(train, 'pca', color='labels', title="K-means Description")
 
 
 def decompose(train: pd.DataFrame, test: pd.DataFrame):
@@ -130,9 +85,6 @@ def decompose(train: pd.DataFrame, test: pd.DataFrame):
 
 
 train_feat, test_feat = decompose(train, test)
-
-
-# ## LinearSVM
 
 
 def fit_lsvb(X, y):
@@ -153,7 +105,7 @@ def fit_lsvb(X, y):
             loss='squared_hinge',
             multi_class='ovr',
             random_state=cfg.seed,
-            verbose=True)
+            verbose=0)
 
         model.fit(X_train, y_train)
         # --------- prediction ---------
