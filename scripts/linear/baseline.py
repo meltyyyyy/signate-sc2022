@@ -18,6 +18,9 @@ import warnings
 import gc
 import os
 from tqdm.auto import tqdm
+plt.style.use('seaborn-pastel')
+warnings.filterwarnings('ignore')
+tqdm.pandas()
 
 
 class Config:
@@ -31,18 +34,10 @@ class Config:
     dir_path = "/home/abe/kaggle/signate-sc2022"
 
 
-plt.style.use('seaborn-pastel')
-warnings.filterwarnings('ignore')
-tqdm.pandas()
-
-
 def seed_everything(seed):
     random.seed(seed)
     np.random.seed(seed)
     os.environ['PYTHONHASHSEED'] = str(seed)
-
-
-seed_everything(Config.seed)
 
 
 def path_setup(cfg):
@@ -59,21 +54,6 @@ def path_setup(cfg):
     return cfg
 
 
-cfg = path_setup(Config)
-
-
-# load data
-train = pd.read_csv(os.path.join(cfg.INPUT, 'train.csv'))
-test = pd.read_csv(os.path.join(cfg.INPUT, 'test.csv'))
-sub = pd.read_csv(os.path.join(cfg.INPUT, 'submit_sample.csv'), header=None)
-
-# preprocess target
-train['jobflag'] -= 1
-
-
-train.head(5)
-
-
 def decompose(train: pd.DataFrame, test: pd.DataFrame):
     tfidf_svd = Pipeline(steps=[
         ("TfidfVectorizer", TfidfVectorizer()),
@@ -82,9 +62,6 @@ def decompose(train: pd.DataFrame, test: pd.DataFrame):
     train = tfidf_svd.fit_transform(train['description'].pipe(hero.clean))
     test = tfidf_svd.fit_transform(test['description'].pipe(hero.clean))
     return pd.DataFrame(train), pd.DataFrame(test)
-
-
-train_feat, test_feat = decompose(train, test)
 
 
 def fit_lsvb(X, y):
@@ -121,4 +98,16 @@ def fit_lsvb(X, y):
     return models
 
 
+cfg = path_setup(Config)
+seed_everything(Config.seed)
+
+# load data
+train = pd.read_csv(os.path.join(cfg.INPUT, 'train.csv'))
+test = pd.read_csv(os.path.join(cfg.INPUT, 'test.csv'))
+sub = pd.read_csv(os.path.join(cfg.INPUT, 'submit_sample.csv'), header=None)
+
+# preprocess target
+train['jobflag'] -= 1
+
+train_feat, test_feat = decompose(train, test)
 models = fit_lsvb(train_feat, train['jobflag'])
