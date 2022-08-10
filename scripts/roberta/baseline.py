@@ -3,7 +3,29 @@
 
 # ### Basic configuration
 
-# In[ ]:
+
+from sklearn.metrics import f1_score
+from sklearn.model_selection import StratifiedKFold
+from torch.cuda.amp import autocast, GradScaler
+from transformers import AdamW, get_linear_schedule_with_warmup
+from transformers import AutoConfig, AutoModel, AutoTokenizer
+from torch.utils.data import Dataset, DataLoader
+import transformers
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import ntpath
+from subprocess import PIPE
+import subprocess
+from glob import glob
+import random
+import warnings
+import gc
+import os
+import seaborn as sns
+from tqdm.auto import tqdm
+import torch.nn as nn
+import torch
 
 
 class Config:
@@ -17,7 +39,7 @@ class Config:
     # max length of token
     max_len = 128
     lr = 2e-5
-    
+
     # optimizer settings
     weight_decay = 2e-5
     beta = (0.9, 0.98)
@@ -26,7 +48,7 @@ class Config:
     n_epochs = 10
     gradient_accumulation_steps = 1
     num_eval = 1
-    
+
     seed = 42
 
     # Reka Env
@@ -43,24 +65,7 @@ class Config:
 
 # ### Import basic libraries
 
-# In[ ]:
 
-
-import torch
-import torch.nn as nn
-from tqdm.auto import tqdm
-import seaborn as sns
-import os
-import gc
-import warnings
-import random
-from glob import glob
-import subprocess
-from subprocess import PIPE
-import ntpath
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 plt.style.use('seaborn-pastel')
 sns.set_palette("winter_r")
 warnings.filterwarnings('ignore')
@@ -68,8 +73,6 @@ tqdm.pandas()
 
 
 # ### Seeding
-
-# In[ ]:
 
 
 def seed_everything(seed):
@@ -80,17 +83,16 @@ def seed_everything(seed):
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
 
+
 seed_everything(Config.seed)
 
 
 # ### Path configuration
 
-# In[ ]:
-
 
 def path_setup(cfg):
     cfg.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
+
     cfg.INPUT = os.path.join(Config.dir_path, 'input')
     cfg.OUTPUT = os.path.join(Config.dir_path, 'output')
     cfg.SUBMISSION = os.path.join(Config.dir_path, 'submissions')
@@ -129,21 +131,15 @@ def path_setup(cfg):
             stdout=PIPE,
             stderr=PIPE,
             text=True)
-    
+
     return cfg
+
 
 cfg = path_setup(Config)
 
 
 # # Define dataset
 
-# In[ ]:
-
-
-import transformers
-from torch.utils.data import Dataset, DataLoader
-from transformers import AutoConfig, AutoModel, AutoTokenizer
-from transformers import AdamW, get_linear_schedule_with_warmup
 
 class BERTDataset(Dataset):
     def __init__(self, cfg, texts, labels=None):
@@ -161,7 +157,7 @@ class BERTDataset(Dataset):
             return inputs, label
         else:
             return inputs
-    
+
     @staticmethod
     def prepare_input(cfg, text):
         inputs = cfg.tokenizer(
@@ -179,8 +175,6 @@ class BERTDataset(Dataset):
 
 # ## Define model
 
-# In[ ]:
-
 
 class BERTModel(nn.Module):
     def __init__(self, cfg, criterion=None):
@@ -192,13 +186,13 @@ class BERTModel(nn.Module):
             output_hidden_states=True
         )
         self.backbone = AutoModel.from_pretrained(
-            cfg.model, 
+            cfg.model,
             config=self.config
         )
         self.fc = nn.Sequential(
             nn.Linear(self.config.hidden_size, 4),
         )
-    
+
     def forward(self, inputs, labels=None):
         outputs = self.backbone(**inputs)["last_hidden_state"]
         outputs = outputs[:, 0, :]
@@ -213,8 +207,6 @@ class BERTModel(nn.Module):
 
 # ## Training
 
-# In[ ]:
-
 
 # KFold
 def get_stratifiedkfold(train, target_col, n_splits, seed):
@@ -227,60 +219,55 @@ def get_stratifiedkfold(train, target_col, n_splits, seed):
     return fold_series
 
 # collatte
+
+
 def collatte(inputs, labels=None):
     mask_len = int(inputs["attention_mask"].sum(axis=1).max())
-    if not labels is None:
+    if labels is not None:
         inputs = {
-            "input_ids" : inputs['input_ids'][:,:mask_len],
-            "attention_mask" : inputs['attention_mask'][:,:mask_len],
+            "input_ids": inputs['input_ids'][:, :mask_len],
+            "attention_mask": inputs['attention_mask'][:, :mask_len],
         }
-        labels =  labels[:,:mask_len]
+        labels = labels[:, :mask_len]
         return inputs, labels, mask_len
-                
+
     else:
         inputs = {
-            "input_ids" : inputs['input_ids'][:,:mask_len],
-            "attention_mask" : inputs['attention_mask'][:,:mask_len],
+            "input_ids": inputs['input_ids'][:, :mask_len],
+            "attention_mask": inputs['attention_mask'][:, :mask_len],
         }
         return inputs, mask_len
 
-
-# In[ ]:
-
-
-from torch.cuda.amp import autocast, GradScaler
-from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import f1_score
 
 def training(cfg, train):
     # =====================
     # Training
     # =====================
     oof_pred = np.zeros((len(train), 4), dtype=np.float32)
-    
+
     # 損失関数
     criterion = nn.CrossEntropyLoss()
 
     for fold in cfg.trn_fold:
         # Dataset,Dataloaderの設定
-        train_df = train.loc[cfg.folds!=fold]
-        valid_df = train.loc[cfg.folds==fold]
+        train_df = train.loc[cfg.folds != fold]
+        valid_df = train.loc[cfg.folds == fold]
         train_idx = list(train_df.index)
         valid_idx = list(valid_df.index)
 
         train_dataset = BERTDataset(
             cfg,
-            train_df['description'].to_numpy(), 
+            train_df['description'].to_numpy(),
             train_df['jobflag'].to_numpy(),
         )
         valid_dataset = BERTDataset(
-            cfg, 
-            valid_df['description'].to_numpy(), 
+            cfg,
+            valid_df['description'].to_numpy(),
             valid_df['jobflag'].to_numpy()
         )
         train_loader = DataLoader(
-            dataset=train_dataset, 
-            batch_size=cfg.batch_size, 
+            dataset=train_dataset,
+            batch_size=cfg.batch_size,
             shuffle=True,
             pin_memory=True,
             drop_last=True
@@ -306,11 +293,11 @@ def training(cfg, train):
         no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
         optimizer_grouped_parameters = []
         optimizer_grouped_parameters.append({
-            'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 
+            'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)],
             'weight_decay': cfg.weight_decay
         })
         optimizer_grouped_parameters.append({
-            'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 
+            'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)],
             'weight_decay': 0.0
         })
         optimizer = AdamW(
@@ -322,18 +309,20 @@ def training(cfg, train):
         num_train_optimization_steps = int(
             len(train_loader) * cfg.n_epochs // cfg.gradient_accumulation_steps
         )
-        num_warmup_steps = int(num_train_optimization_steps * cfg.num_warmup_steps_rate)
+        num_warmup_steps = int(
+            num_train_optimization_steps *
+            cfg.num_warmup_steps_rate)
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
             num_warmup_steps=num_warmup_steps,
             num_training_steps=num_train_optimization_steps
         )
         num_eval_step = len(train_loader) // cfg.num_eval + cfg.num_eval
-        
+
         for epoch in range(cfg.n_epochs):
             # training
             print(f"# ============ start epoch:{epoch} ============== #")
-            model.train() 
+            model.train()
             val_losses_batch = []
             scaler = GradScaler()
             with tqdm(train_loader, total=len(train_loader)) as pbar:
@@ -356,14 +345,14 @@ def training(cfg, train):
                     scaler.scale(loss).backward()
                     if cfg.clip_grad_norm is not None:
                         torch.nn.utils.clip_grad_norm_(
-                            model.parameters(), 
+                            model.parameters(),
                             cfg.clip_grad_norm
                         )
-                    if (step+1) % cfg.gradient_accumulation_steps == 0:
+                    if (step + 1) % cfg.gradient_accumulation_steps == 0:
                         scaler.step(optimizer)
                         scaler.update()
                         scheduler.step()
-                
+
             # evaluating
             val_preds = []
             val_losses = []
@@ -388,33 +377,45 @@ def training(cfg, train):
 
             val_preds = np.concatenate(val_preds)
             val_loss = sum(val_losses) / sum(val_nums)
-            score = f1_score(np.argmax(val_preds, axis=1), valid_df['jobflag'], average='macro')
+            score = f1_score(
+                np.argmax(
+                    val_preds,
+                    axis=1),
+                valid_df['jobflag'],
+                average='macro')
             val_log = {
                 'val_loss': val_loss,
                 'score': score,
             }
-            display(val_log)
+            print(val_log)
             if best_val_score < score:
                 print("save model weight")
                 best_val_preds = val_preds
                 best_val_score = score
                 torch.save(
-                    model.state_dict(), 
+                    model.state_dict(),
                     os.path.join(cfg.EXP_MODEL, f"fold{fold}.pth")
                 )
 
         oof_pred[valid_idx] = best_val_preds.astype(np.float32)
-        np.save(os.path.join(cfg.EXP_PREDS, f'oof_pred_fold{fold}.npy'), best_val_preds)
-        del model; gc.collect()
+        np.save(
+            os.path.join(
+                cfg.EXP_PREDS,
+                f'oof_pred_fold{fold}.npy'),
+            best_val_preds)
+        del model
+        gc.collect()
 
     # scoring
     np.save(os.path.join(cfg.EXP_PREDS, 'oof_pred.npy'), oof_pred)
-    score = f1_score(np.argmax(oof_pred, axis=1), train['jobflag'], average='macro')
+    score = f1_score(
+        np.argmax(
+            oof_pred,
+            axis=1),
+        train['jobflag'],
+        average='macro')
     print('CV:', round(score, 5))
     return score
-
-
-# In[ ]:
 
 
 def inferring(cfg, test):
@@ -427,8 +428,8 @@ def inferring(cfg, test):
             test['description'].to_numpy()
         )
         test_loader = DataLoader(
-            dataset=test_dataset, 
-            batch_size=cfg.batch_size, 
+            dataset=test_dataset,
+            batch_size=cfg.batch_size,
             shuffle=False,
             pin_memory=True
         )
@@ -448,14 +449,16 @@ def inferring(cfg, test):
                 output = output.softmax(axis=1).detach().cpu().numpy()
                 fold_pred.append(output)
         fold_pred = np.concatenate(fold_pred)
-        np.save(os.path.join(cfg.EXP_PREDS, f'sub_pred_fold{fold}.npy'), fold_pred)
+        np.save(
+            os.path.join(
+                cfg.EXP_PREDS,
+                f'sub_pred_fold{fold}.npy'),
+            fold_pred)
         sub_pred += fold_pred / len(cfg.model_weights)
-        del model; gc.collect()
+        del model
+        gc.collect()
     np.save(os.path.join(cfg.EXP_PREDS, f'sub_pred.npy'), sub_pred)
     return sub_pred
-
-
-# In[ ]:
 
 
 # load data
@@ -473,22 +476,22 @@ cfg.folds.to_csv(os.path.join(cfg.EXP_PREDS, 'folds.csv'))
 score = training(cfg, train)
 
 
-# In[ ]:
-
-
 test = pd.read_csv(os.path.join(cfg.INPUT, 'test.csv'))
 sub = pd.read_csv(os.path.join(cfg.INPUT, 'submit_sample.csv'), header=None)
 # BERTの推論
-cfg.model_weights = [p for p in sorted(glob(os.path.join(cfg.EXP_MODEL, 'fold*.pth')))]
+cfg.model_weights = [
+    p for p in sorted(
+        glob(
+            os.path.join(
+                cfg.EXP_MODEL,
+                'fold*.pth')))]
 sub_pred = inferring(cfg, test)
 sub[1] = np.argmax(sub_pred, axis=1)
 sub[1] = sub[1].astype(int) + 1
 
-sub.to_csv(os.path.join(cfg.SUBMISSION, 'submission.csv'), index=False, header=False)
-
-
-# In[ ]:
-
-
-
-
+sub.to_csv(
+    os.path.join(
+        cfg.SUBMISSION,
+        'submission.csv'),
+    index=False,
+    header=False)
