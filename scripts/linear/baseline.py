@@ -36,14 +36,6 @@ class Config:
     # Reka Env
     dir_path = "/home/abe/kaggle/signate-sc2022"
 
-    def is_notebook():
-        if 'get_ipython' not in globals():
-            return False
-        env_name = get_ipython().__class__.__name__  # type: ignore
-        if env_name == 'TerminalInteractiveShell':
-            return False
-        return True
-
 
 # ### Import basic libraries
 
@@ -80,18 +72,6 @@ def path_setup(cfg):
     cfg.NOTEBOOK = os.path.join(Config.dir_path, "Notebooks")
     cfg.SCRIPT = os.path.join(Config.dir_path, "scripts")
 
-    # make dir
-    for dir in [
-            cfg.INPUT,
-            cfg.OUTPUT,
-            cfg.SUBMISSION,
-            cfg.OUTPUT_EXP,
-            cfg.EXP_MODEL,
-            cfg.EXP_PREDS,
-            cfg.EXP_FIG,
-            cfg.NOTEBOOK,
-            cfg.SCRIPT]:
-        os.makedirs(dir, exist_ok=True)
     return cfg
 
 
