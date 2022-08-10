@@ -54,7 +54,7 @@ def path_setup(cfg):
     return cfg
 
 
-def decompose(train: pd.DataFrame, test: pd.DataFrame):
+def vectorize(train: pd.DataFrame, test: pd.DataFrame):
     tfidf_svd = Pipeline(steps=[
         ("TfidfVectorizer", TfidfVectorizer()),
         ("TruncatedSVD", TruncatedSVD(n_components=50, random_state=42))
@@ -109,5 +109,5 @@ sub = pd.read_csv(os.path.join(cfg.INPUT, 'submit_sample.csv'), header=None)
 # preprocess target
 train['jobflag'] -= 1
 
-train_feat, test_feat = decompose(train, test)
+train_feat, test_feat = vectorize(train, test)
 models = fit_lsvb(train_feat, train['jobflag'])
