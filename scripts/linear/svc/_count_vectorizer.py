@@ -6,7 +6,7 @@ from sklearn.metrics import f1_score
 from sklearn.model_selection import StratifiedKFold
 from sklearn.svm import LinearSVC
 from sklearn.pipeline import Pipeline
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.decomposition import TruncatedSVD
 import texthero as hero
 import matplotlib.pyplot as plt
@@ -24,7 +24,7 @@ tqdm.pandas()
 
 
 class Config:
-    script = "linear/svc/_tfidf"
+    script = "linear/svc/_count_vectorizer.py"
 
     n_splits = 5
     seed = 42
@@ -69,8 +69,8 @@ def path_setup(cfg):
 def vectorize(train: pd.DataFrame, test: pd.DataFrame, n_components: int):
     tfidf_svd = Pipeline(
         steps=[
-            ("TfidfVectorizer",
-             TfidfVectorizer()),
+            ("CountVectorizer",
+             CountVectorizer()),
             ("TruncatedSVD",
              TruncatedSVD(
                  n_components=n_components,

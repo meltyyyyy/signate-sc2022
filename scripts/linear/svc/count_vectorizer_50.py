@@ -1,12 +1,19 @@
 #!/usr/bin/env python
 # coding: utf-8
+"""summery
+fold0 : 0.6386981921635387
+fold1 : 0.564834520129773
+fold2 : 0.5126854676741797
+fold3 : 0.5377609813601221
+fold4 : 0.5695523155339909
+oof score: 0.5647062953723209
+"""
 
-from cProfile import label
 from sklearn.metrics import f1_score
 from sklearn.model_selection import StratifiedKFold
 from sklearn.svm import LinearSVC
 from sklearn.pipeline import Pipeline
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.decomposition import TruncatedSVD
 import texthero as hero
 import matplotlib.pyplot as plt
@@ -24,7 +31,7 @@ tqdm.pandas()
 
 
 class Config:
-    script = "linear/svc/_tfidf"
+    script = "linear/svc/count_vectorizer_50"
 
     n_splits = 5
     seed = 42
@@ -66,15 +73,11 @@ def path_setup(cfg):
     return cfg
 
 
-def vectorize(train: pd.DataFrame, test: pd.DataFrame, n_components: int):
-    tfidf_svd = Pipeline(
-        steps=[
-            ("TfidfVectorizer",
-             TfidfVectorizer()),
-            ("TruncatedSVD",
-             TruncatedSVD(
-                 n_components=n_components,
-                 random_state=cfg.seed))])
+def vectorize(train: pd.DataFrame, test: pd.DataFrame):
+    tfidf_svd = Pipeline(steps=[
+        ("CountVectorizer", CountVectorizer()),
+        ("TruncatedSVD", TruncatedSVD(n_components=50, random_state=42))
+    ])
     train = tfidf_svd.fit_transform(train['description'].pipe(hero.clean))
     test = tfidf_svd.fit_transform(test['description'].pipe(hero.clean))
     return pd.DataFrame(train), pd.DataFrame(test)
@@ -110,9 +113,8 @@ def fit_lsvb(X, y):
         models.append(model)
         scores.append(score)
 
-    oof_score = np.mean(scores)
-    print("oof score: {}".format(oof_score))
-    return models, oof_score
+    print("oof score: {}".format(np.mean(scores)))
+    return models
 
 
 cfg = path_setup(Config)
@@ -126,19 +128,5 @@ sub = pd.read_csv(os.path.join(cfg.INPUT, 'submit_sample.csv'), header=None)
 # preprocess target
 train['jobflag'] -= 1
 
-scores = []
-n_trial = 250
-for i in range(n_trial):
-    n_components = (i + 1) * 10
-    print(f"n_components : {n_components}")
-    train_feat, test_feat = vectorize(train, test, n_components)
-    models, oof_score = fit_lsvb(train_feat, train['jobflag'])
-    scores.append(oof_score)
-
-
-fig = plt.figure()
-plt.title("Size of Vectors and Score")
-plt.plot([i * 25 for i in range(n_trial)], scores, label="oof score")
-plt.legend()
-fig.savefig(os.path.join(cfg.EXP_FIG, 'oof_score.png'))
-plt.close()
+train_feat, test_feat = vectorize(train, test)
+models = fit_lsvb(train_feat, train['jobflag'])
