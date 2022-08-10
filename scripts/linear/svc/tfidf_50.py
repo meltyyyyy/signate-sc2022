@@ -1,6 +1,13 @@
 #!/usr/bin/env python
 # coding: utf-8
-
+"""summery
+fold0 : 0.580672820967852
+fold1 : 0.6412732828174005
+fold2 : 0.6598340782164313
+fold3 : 0.6116684415438964
+fold4 : 0.651368611047707
+oof score: 0.6289634469186574
+"""
 
 from sklearn.metrics import f1_score
 from sklearn.model_selection import StratifiedKFold
