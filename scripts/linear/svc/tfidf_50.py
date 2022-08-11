@@ -1,6 +1,13 @@
 #!/usr/bin/env python
 # coding: utf-8
-
+"""summery
+fold0 : 0.580672820967852
+fold1 : 0.6412732828174005
+fold2 : 0.6598340782164313
+fold3 : 0.6116684415438964
+fold4 : 0.651368611047707
+oof score: 0.6289634469186574
+"""
 
 from sklearn.metrics import f1_score
 from sklearn.model_selection import StratifiedKFold
@@ -24,8 +31,7 @@ tqdm.pandas()
 
 
 class Config:
-    notebook = "Linear/Baseline"
-    script = "linear/baseline"
+    script = "linear/svc/tfidf_50"
 
     n_splits = 5
     seed = 42
@@ -50,6 +56,19 @@ def path_setup(cfg):
     cfg.EXP_FIG = os.path.join(cfg.OUTPUT_EXP, "fig")
     cfg.NOTEBOOK = os.path.join(Config.dir_path, "Notebooks")
     cfg.SCRIPT = os.path.join(Config.dir_path, "scripts")
+
+    # make dir
+    for dir in [
+            cfg.INPUT,
+            cfg.OUTPUT,
+            cfg.SUBMISSION,
+            cfg.OUTPUT_EXP,
+            cfg.EXP_MODEL,
+            cfg.EXP_PREDS,
+            cfg.EXP_FIG,
+            cfg.NOTEBOOK,
+            cfg.SCRIPT]:
+        os.makedirs(dir, exist_ok=True)
 
     return cfg
 

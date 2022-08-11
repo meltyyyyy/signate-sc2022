@@ -1,13 +1,18 @@
 #!/usr/bin/env python
 # coding: utf-8
-
+"""summery
+fold0 : 0.589268085403194
+fold1 : 0.6135278914833789
+fold2 : 0.5991713130826277
+fold3 : 0.6137200966187506
+fold4 : 0.601547619047619
+oof score: 0.603447001127114
+"""
 
 from sklearn.metrics import f1_score
 from sklearn.model_selection import StratifiedKFold
-from sklearn.svm import LinearSVC
-from sklearn.pipeline import Pipeline
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.decomposition import TruncatedSVD
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.feature_extraction.text import CountVectorizer
 import texthero as hero
 import matplotlib.pyplot as plt
 import numpy as np
@@ -24,8 +29,7 @@ tqdm.pandas()
 
 
 class Config:
-    notebook = "Linear/Baseline"
-    script = "linear/baseline"
+    script = "linear/naive_bayes/tfidf"
 
     n_splits = 5
     seed = 42
@@ -51,20 +55,32 @@ def path_setup(cfg):
     cfg.NOTEBOOK = os.path.join(Config.dir_path, "Notebooks")
     cfg.SCRIPT = os.path.join(Config.dir_path, "scripts")
 
+    # make dir
+    for dir in [
+            cfg.INPUT,
+            cfg.OUTPUT,
+            cfg.SUBMISSION,
+            cfg.OUTPUT_EXP,
+            cfg.EXP_MODEL,
+            cfg.EXP_PREDS,
+            cfg.EXP_FIG,
+            cfg.NOTEBOOK,
+            cfg.SCRIPT]:
+        os.makedirs(dir, exist_ok=True)
+
     return cfg
 
 
 def vectorize(train: pd.DataFrame, test: pd.DataFrame):
-    tfidf_svd = Pipeline(steps=[
-        ("TfidfVectorizer", TfidfVectorizer()),
-        ("TruncatedSVD", TruncatedSVD(n_components=50, random_state=42))
-    ])
-    train = tfidf_svd.fit_transform(train['description'].pipe(hero.clean))
-    test = tfidf_svd.fit_transform(test['description'].pipe(hero.clean))
+
+    vectorizer = CountVectorizer()
+
+    train = vectorizer.fit_transform(train['description'].pipe(hero.clean)).toarray()
+    test = vectorizer.fit_transform(test['description'].pipe(hero.clean)).toarray()
     return pd.DataFrame(train), pd.DataFrame(test)
 
 
-def fit_lsvb(X, y):
+def fit_nbayes(X, y):
     models = []
     scores = []
 
@@ -77,12 +93,7 @@ def fit_lsvb(X, y):
         X_train, y_train = X.iloc[trn_index], y.iloc[trn_index]
         X_valid, y_valid = X.iloc[val_index], y.iloc[val_index]
 
-        model = LinearSVC(
-            penalty='l2',
-            loss='squared_hinge',
-            multi_class='ovr',
-            random_state=cfg.seed,
-            verbose=0)
+        model = MultinomialNB(alpha=1.0)
 
         model.fit(X_train, y_train)
         # --------- prediction ---------
@@ -110,4 +121,4 @@ sub = pd.read_csv(os.path.join(cfg.INPUT, 'submit_sample.csv'), header=None)
 train['jobflag'] -= 1
 
 train_feat, test_feat = vectorize(train, test)
-models = fit_lsvb(train_feat, train['jobflag'])
+models = fit_nbayes(train_feat, train['jobflag'])
