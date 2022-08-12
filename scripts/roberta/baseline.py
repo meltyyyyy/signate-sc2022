@@ -40,7 +40,7 @@ class Config:
     model_name = "roberta-base"
     weight_decay = 2e-5
     beta = (0.9, 0.98)
-    max_len = 526
+    max_len = 128
     lr = 2e-5
     num_warmup_steps_rate = 0.01
     clip_grad_norm = None
@@ -333,7 +333,6 @@ def training(X, y, tokenizer, batch_size):
         oof_pred[valid_idx] = best_val_preds.astype(np.float32)
         del model
         gc.collect()
-        break
 
     score = f1_score(np.argmax(oof_pred, axis=1), y, average='macro')
     print('CV:', round(score, 5))
