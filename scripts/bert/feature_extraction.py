@@ -8,7 +8,6 @@
 from tqdm import tqdm
 from transformers import BertTokenizer
 import transformers
-from nltk.stem.porter import PorterStemmer
 import re
 from transformers import AdamW, AutoModel, AutoTokenizer
 from sklearn.model_selection import StratifiedKFold
@@ -17,7 +16,6 @@ import torch.optim as optim
 import torch.nn.functional as F
 import torch.nn as nn
 import torch
-import texthero as hero
 import seaborn as sns
 import pandas as pd
 import numpy as np
@@ -96,7 +94,47 @@ def remove_tag(x):
     return x.apply(lambda x: p.sub("", x))
 
 
-xf
+class BertSequenceVectorizer:
+    def __init__(self):
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.model_name = cfg.model
+        self.tokenizer = BertTokenizer.from_pretrained(self.model_name)
+        self.bert_model = transformers.BertModel.from_pretrained(
+            self.model_name)
+        self.bert_model = self.bert_model.to(self.device)
+        self.max_len = 128
+
+    def vectorize(self, sentence: str) -> np.array:
+        inp = self.tokenizer.encode(sentence)
+        len_inp = len(inp)
+
+        if len_inp >= self.max_len:
+            inputs = inp[:self.max_len]
+            masks = [1] * self.max_len
+        else:
+            inputs = inp + [0] * (self.max_len - len_inp)
+            masks = [1] * len_inp + [0] * (self.max_len - len_inp)
+
+        inputs_tensor = torch.tensor(
+            [inputs], dtype=torch.long).to(
+            self.device)
+        masks_tensor = torch.tensor([masks], dtype=torch.long).to(self.device)
+
+        bert_out = self.bert_model(inputs_tensor, masks_tensor)
+        seq_out, pooled_out = bert_out['last_hidden_state'], bert_out['pooler_output']
+
+        if torch.cuda.is_available():
+            return seq_out.cpu().detach().numpy()
+        else:
+            return seq_out[0][0].detach().numpy()
+
+
+def vectorize(df: pd.DataFrame):
+    assert "description" in df.columns
+    BSV = BertSequenceVectorizer()
+    df['feature'] = df['description'].progress_apply(
+        lambda x: BSV.vectorize(x))
+    return pd.DataFrame(np.stack(df['feature']))
 
 
 cfg = path_setup(Config)
@@ -109,8 +147,7 @@ if torch.cuda.is_available():
     print("Device:", torch.cuda.get_device_name(current_device))
 
 
-train = pd.read_csv(os.path.join(cfg.INPUT, "train.csv"))
-train = cleaning(train)
+train = pd.read_csv(os.path.join(cfg.INPUT, "train_cleaned.csv"))
 print(train['description'].head(10))
 
 
