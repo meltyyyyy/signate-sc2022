@@ -32,18 +32,22 @@ class Config:
     n_splits = 5
     seed = 42
 
-    batch_size = 526
+    batch_size = 16
     n_classes = 4
     n_epochs = 10
 
     # bert
     model_name = "roberta-base"
+    weight_decay = 2e-5
+    beta = (0.9, 0.98)
     max_len = 526
     lr = 2e-5
     num_warmup_steps_rate = 0.01
     clip_grad_norm = None
     gradient_accumulation_steps = 1
+    num_eval = 1
 
+    train = False
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Reka Env
@@ -86,17 +90,6 @@ def path_setup(cfg):
         os.makedirs(dir, exist_ok=True)
 
     return cfg
-
-
-def cleaning(df: pd.DataFrame):
-    assert "description" in df.columns
-    df['description'] = df['description'].pipe(remove_tag).pipe(hero.clean)
-    return df
-
-
-def remove_tag(x):
-    p = re.compile(r"<[^>]*?>")
-    return x.apply(lambda x: p.sub("", x))
 
 
 class BERTDataset(Dataset):
@@ -181,7 +174,7 @@ def training(X, y, tokenizer, batch_size):
     # =====================
     # Training
     # =====================
-    oof_pred = np.zeros((len(X), cfg.n_splits), dtype=np.float32)
+    oof_pred = np.zeros((len(X), cfg.n_classes), dtype=np.float32)
     criterion = nn.CrossEntropyLoss()
 
     skf = StratifiedKFold(
@@ -190,6 +183,10 @@ def training(X, y, tokenizer, batch_size):
         random_state=cfg.seed)
 
     for fold, (trn_index, val_index) in enumerate(skf.split(X, y)):
+        print("#" * 25)
+        print(f"# fold : {fold}")
+        print("#" * 25)
+
         X_train, y_train = X.iloc[trn_index], y.iloc[trn_index]
         X_valid, y_valid = X.iloc[val_index], y.iloc[val_index]
         train_idx = list(X_train.index)
@@ -225,7 +222,7 @@ def training(X, y, tokenizer, batch_size):
         best_val_score = -1
 
         # model
-        model = BERTModel(cfg, criterion)
+        model = BERTModel(cfg.model_name, criterion)
         model = model.to(cfg.device)
 
         # settings for optimizer， scheduler
@@ -261,7 +258,6 @@ def training(X, y, tokenizer, batch_size):
 
         for epoch in range(cfg.n_epochs):
             # training
-            print(f"# ============ start epoch:{epoch} ============== #")
             model.train()
             val_losses_batch = []
             scaler = GradScaler()
@@ -337,21 +333,23 @@ def training(X, y, tokenizer, batch_size):
         oof_pred[valid_idx] = best_val_preds.astype(np.float32)
         del model
         gc.collect()
+        break
 
     score = f1_score(np.argmax(oof_pred, axis=1), y, average='macro')
     print('CV:', round(score, 5))
     return score
 
 
-def inferring(X):
+def inferring(X, tokenizer):
     # =====================
     # Inferring
     # =====================
     print('\n'.join(cfg.model_weights))
-    sub_pred = np.zeros((len(X), cfg.n_splits), dtype=np.float32)
+    sub_pred = np.zeros((len(X), cfg.n_classes), dtype=np.float32)
     for fold, model_weight in enumerate(cfg.model_weights):
         # dataset, dataloader
         test_dataset = BERTDataset(
+            tokenizer,
             X.to_numpy()
         )
         test_loader = DataLoader(
@@ -385,44 +383,47 @@ def inferring(X):
 seed_everything(Config.seed)
 cfg = path_setup(Config)
 
-# load data
-train = pd.read_csv(os.path.join(cfg.INPUT, 'train.csv'))
-train = cleaning(train)
-print(train['description'].head(10))
-
-# preprocess target
-train['jobflag'] -= 1
-
 # load tokenizer
 tokenizer = AutoTokenizer.from_pretrained(cfg.model_name)
 
-# train BERT
-score = training(train['description'],
-                 train['jobflag'],
-                 tokenizer=tokenizer,
-                 batch_size=cfg.batch_size)
+if cfg.train:
+    print("#" * 25)
+    print("# Training")
+    print("#" * 25)
 
+    # load data
+    train = pd.read_csv(os.path.join(cfg.INPUT, 'train_cleaned.csv'))
+    print(train['description'].head(10))
+    # preprocess target
+    train['jobflag'] -= 1
+    # train BERT
+    score = training(train['description'],
+                     train['jobflag'],
+                     tokenizer=tokenizer,
+                     batch_size=cfg.batch_size)
+else:
+    print("#" * 25)
+    print("# Inferring")
+    print("#" * 25)
 
-test = pd.read_csv(os.path.join(cfg.INPUT, 'test.csv'))
-test = cleaning(test)
-print(train['test'].head(10))
+    test = pd.read_csv(os.path.join(cfg.INPUT, 'test_cleaned.csv'))
+    sub = pd.read_csv(os.path.join(cfg.INPUT, 'submit_sample.csv'), header=None)
+    print(test['description'].head(10))
 
-sub = pd.read_csv(os.path.join(cfg.INPUT, 'submit_sample.csv'), header=None)
+    # BERTの推論
+    cfg.model_weights = [
+        p for p in sorted(
+            glob(
+                os.path.join(
+                    cfg.EXP_MODEL,
+                    'fold*.pth')))]
+    preds = inferring(test['description'], tokenizer)
 
-# BERTの推論
-cfg.model_weights = [
-    p for p in sorted(
-        glob(
-            os.path.join(
-                cfg.EXP_MODEL,
-                'fold*.pth')))]
-sub_pred = inferring(test['description'])
-
-sub[1] = np.argmax(sub_pred, axis=1)
-sub[1] = sub[1].astype(int) + 1
-sub.to_csv(
-    os.path.join(
-        cfg.SUBMISSION,
-        'submission.csv'),
-    index=False,
-    header=False)
+    sub[1] = np.argmax(preds, axis=1)
+    sub[1] = sub[1].astype(int) + 1
+    sub.to_csv(
+        os.path.join(
+            cfg.SUBMISSION,
+            'submission.csv'),
+        index=False,
+        header=False)
