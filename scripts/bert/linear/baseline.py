@@ -47,7 +47,7 @@ class Config:
     epochs = 5
 
     # bert
-    model = "bert-base-uncased"
+    model_name = "bert-base-uncased"
 
     # Reka Env
     dir_path = "/home/abe/kaggle/signate-sc2022"
@@ -102,14 +102,14 @@ def remove_tag(x):
 
 
 class BertSequenceVectorizer:
-    def __init__(self):
+    def __init__(self, model_name="bert-base-uncased", max_len=128):
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.model_name = cfg.model
+        self.model_name = model_name
         self.tokenizer = BertTokenizer.from_pretrained(self.model_name)
         self.bert_model = transformers.BertModel.from_pretrained(
             self.model_name)
         self.bert_model = self.bert_model.to(self.device)
-        self.max_len = 128
+        self.max_len = max_len
 
     def vectorize(self, sentence: str) -> np.array:
         inp = self.tokenizer.encode(sentence)
@@ -138,7 +138,7 @@ class BertSequenceVectorizer:
 
 def vectorize(df: pd.DataFrame):
     assert "description" in df.columns
-    BSV = BertSequenceVectorizer()
+    BSV = BertSequenceVectorizer(cfg.model_name, max_len=512)
     df['feature'] = df['description'].progress_apply(
         lambda x: BSV.vectorize(x))
     return pd.DataFrame(np.stack(df['feature']))
@@ -198,4 +198,5 @@ print(train['description'].head(10))
 
 
 train_feat = vectorize(train)
+print("train_feat shape : {}".format(train_feat.shape))
 models = fit_lsvb(train_feat, train['jobflag'])

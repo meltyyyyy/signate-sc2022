@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+# ### Basic configuration
+
 
 from sklearn.metrics import f1_score
 from sklearn.model_selection import StratifiedKFold
@@ -8,9 +10,13 @@ from torch.cuda.amp import autocast, GradScaler
 from transformers import AdamW, get_linear_schedule_with_warmup
 from transformers import AutoConfig, AutoModel, AutoTokenizer
 from torch.utils.data import Dataset, DataLoader
+import transformers
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import ntpath
+from subprocess import PIPE
+import subprocess
 from glob import glob
 import random
 import warnings
@@ -20,34 +26,53 @@ import seaborn as sns
 from tqdm.auto import tqdm
 import torch.nn as nn
 import torch
+
+
+class Config:
+    notebook = "RoBERTa/Baseline"
+    script = "roberta/baseline"
+    model = "roberta-base"
+
+    n_splits = 4
+    batch_size = 16
+    trn_fold = [0, 1, 2, 3]
+    # max length of token
+    max_len = 128
+    lr = 2e-5
+
+    # optimizer settings
+    weight_decay = 2e-5
+    beta = (0.9, 0.98)
+    num_warmup_steps_rate = 0.01
+    clip_grad_norm = None
+    n_epochs = 10
+    gradient_accumulation_steps = 1
+    num_eval = 1
+
+    seed = 42
+
+    # Reka Env
+    dir_path = "/home/abe/kaggle/signate-sc2022"
+
+    def is_notebook():
+        if 'get_ipython' not in globals():
+            return False
+        env_name = get_ipython().__class__.__name__  # type: ignore
+        if env_name == 'TerminalInteractiveShell':
+            return False
+        return True
+
+
+# ### Import basic libraries
+
+
 plt.style.use('seaborn-pastel')
 sns.set_palette("winter_r")
 warnings.filterwarnings('ignore')
 tqdm.pandas()
 
 
-class Config:
-    script = "roberta/baseline"
-
-    n_splits = 5
-    seed = 42
-
-    batch_size = 526
-    n_classes = 4
-    n_epochs = 10
-
-    # bert
-    model_name = "roberta-base"
-    max_len = 526
-    lr = 2e-5
-    num_warmup_steps_rate = 0.01
-    clip_grad_norm = None
-    gradient_accumulation_steps = 1
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    # Reka Env
-    dir_path = "/home/abe/kaggle/signate-sc2022"
+# ### Seeding
 
 
 def seed_everything(seed):
@@ -57,6 +82,12 @@ def seed_everything(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
+
+
+seed_everything(Config.seed)
+
+
+# ### Path configuration
 
 
 def path_setup(cfg):
@@ -85,23 +116,34 @@ def path_setup(cfg):
             cfg.SCRIPT]:
         os.makedirs(dir, exist_ok=True)
 
+    if Config.is_notebook():
+        notebook_path = os.path.join(cfg.NOTEBOOK, Config.notebook + ".ipynb")
+        script_path = os.path.join(cfg.SCRIPT, Config.script + ".py")
+        dir, _ = ntpath.split(script_path)
+        subprocess.run(f"mkdir -p {dir}; touch {script_path}",
+                       shell=True,
+                       stdout=PIPE,
+                       stderr=PIPE,
+                       text=True)
+        subprocess.run(
+            f"jupyter nbconvert --to python {notebook_path} --output {script_path}",
+            shell=True,
+            stdout=PIPE,
+            stderr=PIPE,
+            text=True)
+
     return cfg
 
 
-def cleaning(df: pd.DataFrame):
-    assert "description" in df.columns
-    df['description'] = df['description'].pipe(remove_tag).pipe(hero.clean)
-    return df
+cfg = path_setup(Config)
 
 
-def remove_tag(x):
-    p = re.compile(r"<[^>]*?>")
-    return x.apply(lambda x: p.sub("", x))
+# # Define dataset
 
 
 class BERTDataset(Dataset):
-    def __init__(self, tokenizer, texts, labels=None):
-        self.tokenizer = tokenizer
+    def __init__(self, cfg, texts, labels=None):
+        self.cfg = cfg
         self.texts = texts
         self.labels = labels
 
@@ -109,7 +151,7 @@ class BERTDataset(Dataset):
         return len(self.texts)
 
     def __getitem__(self, index):
-        inputs = self.prepare_input(self.tokenizer, self.texts[index])
+        inputs = self.prepare_input(self.cfg, self.texts[index])
         if self.labels is not None:
             label = torch.tensor(self.labels[index], dtype=torch.int64)
             return inputs, label
@@ -117,8 +159,8 @@ class BERTDataset(Dataset):
             return inputs
 
     @staticmethod
-    def prepare_input(tokenizer, text):
-        inputs = tokenizer(
+    def prepare_input(cfg, text):
+        inputs = cfg.tokenizer(
             text,
             add_special_tokens=True,
             max_length=cfg.max_len,
@@ -131,16 +173,20 @@ class BERTDataset(Dataset):
         return inputs
 
 
+# ## Define model
+
+
 class BERTModel(nn.Module):
-    def __init__(self, model_name="roberta-base", criterion=None):
+    def __init__(self, cfg, criterion=None):
         super().__init__()
+        self.cfg = cfg
         self.criterion = criterion
         self.config = AutoConfig.from_pretrained(
-            model_name,
+            cfg.model,
             output_hidden_states=True
         )
         self.backbone = AutoModel.from_pretrained(
-            model_name,
+            cfg.model,
             config=self.config
         )
         self.fc = nn.Sequential(
@@ -157,6 +203,22 @@ class BERTModel(nn.Module):
         else:
             logits = self.fc(outputs)
             return logits
+
+
+# ## Training
+
+
+# KFold
+def get_stratifiedkfold(train, target_col, n_splits, seed):
+    kf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
+    generator = kf.split(train, train[target_col])
+    fold_series = []
+    for fold, (idx_train, idx_valid) in enumerate(generator):
+        fold_series.append(pd.Series(fold, index=idx_valid))
+    fold_series = pd.concat(fold_series).sort_index()
+    return fold_series
+
+# collatte
 
 
 def collatte(inputs, labels=None):
@@ -177,58 +239,56 @@ def collatte(inputs, labels=None):
         return inputs, mask_len
 
 
-def training(X, y, tokenizer, batch_size):
+def training(cfg, train):
     # =====================
     # Training
     # =====================
-    oof_pred = np.zeros((len(X), cfg.n_splits), dtype=np.float32)
+    oof_pred = np.zeros((len(train), 4), dtype=np.float32)
+
+    # 損失関数
     criterion = nn.CrossEntropyLoss()
 
-    skf = StratifiedKFold(
-        n_splits=cfg.n_splits,
-        shuffle=True,
-        random_state=cfg.seed)
-
-    for fold, (trn_index, val_index) in enumerate(skf.split(X, y)):
-        X_train, y_train = X.iloc[trn_index], y.iloc[trn_index]
-        X_valid, y_valid = X.iloc[val_index], y.iloc[val_index]
-        train_idx = list(X_train.index)
-        valid_idx = list(X_valid.index)
+    for fold in cfg.trn_fold:
+        # Dataset,Dataloaderの設定
+        train_df = train.loc[cfg.folds != fold]
+        valid_df = train.loc[cfg.folds == fold]
+        train_idx = list(train_df.index)
+        valid_idx = list(valid_df.index)
 
         train_dataset = BERTDataset(
-            tokenizer,
-            X_train.to_numpy(),
-            y_train.to_numpy(),
+            cfg,
+            train_df['description'].to_numpy(),
+            train_df['jobflag'].to_numpy(),
         )
         valid_dataset = BERTDataset(
-            tokenizer,
-            X_valid.to_numpy(),
-            y_valid.to_numpy()
+            cfg,
+            valid_df['description'].to_numpy(),
+            valid_df['jobflag'].to_numpy()
         )
         train_loader = DataLoader(
             dataset=train_dataset,
-            batch_size=batch_size,
+            batch_size=cfg.batch_size,
             shuffle=True,
             pin_memory=True,
             drop_last=True
         )
         valid_loader = DataLoader(
             dataset=valid_dataset,
-            batch_size=batch_size,
+            batch_size=cfg.batch_size,
             shuffle=False,
             pin_memory=True,
             drop_last=False
         )
 
-        # initialize
+        # 初期化
         best_val_preds = None
         best_val_score = -1
 
-        # model
+        # modelの読み込み
         model = BERTModel(cfg, criterion)
         model = model.to(cfg.device)
 
-        # settings for optimizer， scheduler
+        # optimizer，schedulerの設定
         param_optimizer = list(model.named_parameters())
         no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
         optimizer_grouped_parameters = []
@@ -321,12 +381,15 @@ def training(X, y, tokenizer, batch_size):
                 np.argmax(
                     val_preds,
                     axis=1),
-                y_valid,
+                valid_df['jobflag'],
                 average='macro')
-
-            print(f"val_loss : {val_loss}, score : {score}")
-
+            val_log = {
+                'val_loss': val_loss,
+                'score': score,
+            }
+            print(val_log)
             if best_val_score < score:
+                print("save model weight")
                 best_val_preds = val_preds
                 best_val_score = score
                 torch.save(
@@ -335,24 +398,34 @@ def training(X, y, tokenizer, batch_size):
                 )
 
         oof_pred[valid_idx] = best_val_preds.astype(np.float32)
+        np.save(
+            os.path.join(
+                cfg.EXP_PREDS,
+                f'oof_pred_fold{fold}.npy'),
+            best_val_preds)
         del model
         gc.collect()
 
-    score = f1_score(np.argmax(oof_pred, axis=1), y, average='macro')
+    # scoring
+    np.save(os.path.join(cfg.EXP_PREDS, 'oof_pred.npy'), oof_pred)
+    score = f1_score(
+        np.argmax(
+            oof_pred,
+            axis=1),
+        train['jobflag'],
+        average='macro')
     print('CV:', round(score, 5))
     return score
 
 
-def inferring(X):
-    # =====================
-    # Inferring
-    # =====================
+def inferring(cfg, test):
     print('\n'.join(cfg.model_weights))
-    sub_pred = np.zeros((len(X), cfg.n_splits), dtype=np.float32)
+    sub_pred = np.zeros((len(test), 4), dtype=np.float32)
     for fold, model_weight in enumerate(cfg.model_weights):
         # dataset, dataloader
         test_dataset = BERTDataset(
-            X.to_numpy()
+            cfg,
+            test['description'].to_numpy()
         )
         test_loader = DataLoader(
             dataset=test_dataset,
@@ -360,7 +433,7 @@ def inferring(X):
             shuffle=False,
             pin_memory=True
         )
-        model = BERTModel()
+        model = BERTModel(cfg)
         model.load_state_dict(torch.load(model_weight))
         model = model.to(cfg.device)
 
@@ -376,39 +449,35 @@ def inferring(X):
                 output = output.softmax(axis=1).detach().cpu().numpy()
                 fold_pred.append(output)
         fold_pred = np.concatenate(fold_pred)
+        np.save(
+            os.path.join(
+                cfg.EXP_PREDS,
+                f'sub_pred_fold{fold}.npy'),
+            fold_pred)
         sub_pred += fold_pred / len(cfg.model_weights)
         del model
         gc.collect()
+    np.save(os.path.join(cfg.EXP_PREDS, f'sub_pred.npy'), sub_pred)
     return sub_pred
 
 
-seed_everything(Config.seed)
-cfg = path_setup(Config)
-
 # load data
 train = pd.read_csv(os.path.join(cfg.INPUT, 'train.csv'))
-train = cleaning(train)
-print(train['description'].head(10))
 
 # preprocess target
 train['jobflag'] -= 1
 
 # load tokenizer
-tokenizer = AutoTokenizer.from_pretrained(cfg.model_name)
-
+cfg.tokenizer = AutoTokenizer.from_pretrained(cfg.model)
+# create folds
+cfg.folds = get_stratifiedkfold(train, 'jobflag', cfg.n_splits, cfg.seed)
+cfg.folds.to_csv(os.path.join(cfg.EXP_PREDS, 'folds.csv'))
 # train BERT
-score = training(train['description'],
-                 train['jobflag'],
-                 tokenizer=tokenizer,
-                 batch_size=cfg.batch_size)
+score = training(cfg, train)
 
 
 test = pd.read_csv(os.path.join(cfg.INPUT, 'test.csv'))
-test = cleaning(test)
-print(train['test'].head(10))
-
 sub = pd.read_csv(os.path.join(cfg.INPUT, 'submit_sample.csv'), header=None)
-
 # BERTの推論
 cfg.model_weights = [
     p for p in sorted(
@@ -416,10 +485,10 @@ cfg.model_weights = [
             os.path.join(
                 cfg.EXP_MODEL,
                 'fold*.pth')))]
-sub_pred = inferring(test['description'])
-
+sub_pred = inferring(cfg, test)
 sub[1] = np.argmax(sub_pred, axis=1)
 sub[1] = sub[1].astype(int) + 1
+
 sub.to_csv(
     os.path.join(
         cfg.SUBMISSION,
