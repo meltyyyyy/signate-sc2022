@@ -108,15 +108,17 @@ class BERTModel(nn.Module):
         )
 
     def forward(self, inputs, labels=None):
-        outputs = self.backbone(**inputs)["last_hidden_state"]
-        outputs = outputs[:, 0, :]
-        if labels is not None:
-            logits = self.fc(outputs)
-            loss = self.criterion(logits, labels)
-            return logits, loss
-        else:
-            logits = self.fc(outputs)
-            return logits
+        outputs = self.backbone(**inputs)
+
+        if labels is None:
+
+            logits = self.fc(outputs["last_hidden_state"][:, 0, :])
+            return logits, outputs
+
+        outputs = outputs["last_hidden_state"][:, 0, :]
+        logits = self.fc(outputs)
+        loss = self.criterion(logits, labels)
+        return logits, loss
 
 
 class BertSequenceVectorizer:
@@ -142,33 +144,30 @@ class BertSequenceVectorizer:
             [inputs], dtype=torch.long).to(
             self.device)
         masks_tensor = torch.tensor([masks], dtype=torch.long).to(self.device)
-
-        bert_out = self.bert_model(inputs_tensor, masks_tensor)
+        _, bert_out = self.bert_model({"input_ids": inputs_tensor, "attention_mask": masks_tensor})
         seq_out, pooled_out = bert_out['last_hidden_state'], bert_out['pooler_output']
 
         if torch.cuda.is_available():
-            return seq_out.cpu().detach().numpy()
+            return seq_out[0][0].cpu().detach().numpy()
         else:
             return seq_out[0][0].detach().numpy()
 
 
-def vectorize(df: pd.DataFrame, tokenizer, model_paths):
+def vectorize(df: pd.DataFrame, tokenizer, model_paths) -> pd.DataFrame:
     assert "description" in df.columns
-    df['feature'] = 0
     print('\n'.join(model_paths))
+    df['embeded'] = 0
     for _, model_weight in enumerate(model_paths):
         model = BERTModel()
         model.load_state_dict(torch.load(model_weight))
         model = model.to(cfg.device)
 
         BSV = BertSequenceVectorizer(model, tokenizer, cfg.max_len)
-        df['feature'] += df['description'].progress_apply(lambda x: BSV.vectorize(x))
-
+        df['embeded'] = df['description'].progress_apply(lambda x: BSV.vectorize(x))
         del model
         gc.collect()
-
-    df['feature'] = df['feature'] / len(model_paths)
-    return pd.DataFrame(np.stack(df['feature']))
+    df['embeded'] = df['embeded'] / len(model_paths)
+    return pd.DataFrame(np.stack(df['embeded']))
 
 
 seed_everything(Config.seed)
@@ -176,9 +175,26 @@ cfg = path_setup(Config)
 
 # load tokenizer
 tokenizer = AutoTokenizer.from_pretrained(cfg.model_name)
-model_paths = [p for p in sorted(glob(os.path.join(cfg.dir_path, "/output/roberta/baseline", 'fold*.pth')))]
+
+# trained RoBERTa model path
+model_paths = [p for p in sorted(glob(os.path.join(cfg.dir_path + "/output/roberta/baseline/model/", "fold*.pth")))]
+
+# process train data
 train = pd.read_csv(os.path.join(cfg.INPUT, "train_cleaned.csv"))
 print(train['description'].head(10))
+
 feat_train = vectorize(train, tokenizer, model_paths)
 print(feat_train.head())
 print(feat_train.shape)
+
+# process test data
+test = pd.read_csv(os.path.join(cfg.INPUT, "test_cleaned.csv"))
+print(test['description'].head(10))
+
+feat_test = vectorize(test, tokenizer, model_paths)
+print(feat_test.head())
+print(feat_test.shape)
+
+# save
+feat_train.to_csv(os.path.join(cfg.INPUT, "train_roberta_embeded.csv"), index=False)
+feat_test.to_csv(os.path.join(cfg.INPUT, "test_roberta_embeded.csv", index=False))

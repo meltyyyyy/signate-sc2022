@@ -122,7 +122,6 @@ class BertSequenceVectorizer:
 
         bert_out = self.bert_model(inputs_tensor, masks_tensor)
         seq_out, pooled_out = bert_out['last_hidden_state'], bert_out['pooler_output']
-
         if torch.cuda.is_available():
             return seq_out.cpu().detach().numpy()
         else:
