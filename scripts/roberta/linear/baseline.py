@@ -7,6 +7,7 @@ fold2 : 0.8800030946196042
 fold3 : 0.9457377702734393
 fold4 : 0.6911483906164757
 oof score: 0.8738139421291737
+This is leakage!!
 """
 
 
@@ -143,5 +144,5 @@ pred = inference_lsvc(models, test_embeded)
 print(pred)
 
 sub = pd.read_csv(os.path.join(cfg.INPUT, 'submit_sample.csv'), header=None)
-sub[1] = pred
+sub[1] = pred.astype(int) + 1
 sub.to_csv(os.path.join(cfg.SUBMISSION, 'roberta_linear.csv'), index=False, header=False)
