@@ -197,4 +197,4 @@ print(feat_test.shape)
 
 # save
 feat_train.to_csv(os.path.join(cfg.INPUT, "train_roberta_embeded.csv"), index=False)
-feat_test.to_csv(os.path.join(cfg.INPUT, "test_roberta_embeded.csv", index=False))
+feat_test.to_csv(os.path.join(cfg.INPUT, "test_roberta_embeded.csv"), index=False)
