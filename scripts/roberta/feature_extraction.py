@@ -29,7 +29,7 @@ tqdm.pandas()
 class Config:
     script = "roberta/feature_extraction"
 
-    n_splits = 5
+    n_splits = 4
     seed = 42
 
     batch_size = 16

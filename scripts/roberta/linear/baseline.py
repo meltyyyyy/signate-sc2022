@@ -32,7 +32,7 @@ warnings.filterwarnings('ignore')
 class Config:
     script = "roberta/linear/baseline"
 
-    n_splits = 5
+    n_splits = 4
     seed = 42
 
     n_classes = 4

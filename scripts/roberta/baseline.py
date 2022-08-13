@@ -29,7 +29,7 @@ tqdm.pandas()
 class Config:
     script = "roberta/baseline"
 
-    n_splits = 5
+    n_splits = 4
     seed = 42
 
     batch_size = 16
@@ -47,7 +47,7 @@ class Config:
     gradient_accumulation_steps = 1
     num_eval = 1
 
-    train = False
+    train = True
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Reka Env
